@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="shell shell-dashboard">
+  <section class="hero">
+    <p class="eyebrow">Migrator</p>
+    <h1 class="dashboard-hero-title">Миграция Telegram в новый чат Яндекс Мессенджера.</h1>
+    <p class="hero-copy">
+      Сервис создаёт новый чат от имени бота, назначает автора импорта администратором и переносит архив в фоновом режиме.
+      ПОЛНЫЙ архив из ТГ нужно выгрузить в машиночитаемом JSON, и всю папку упаковать в ZIP.
+    </p>
+  </section>
+  
+  <section class="panel panel-form">
+    <div class="panel-head">
+      <div>
+        <p class="caption">Сеанс</p>
+        <h2>{{ user.full_name }}</h2>
+        <p class="panel-subtitle">{{ user.email }}</p>
+      </div>
+      <div class="top-actions">
+        {% if is_admin %}
+        <a class="secondary-link" href="/admin">Админка</a>
+        {% endif %}
+        <form class="inline-form" method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="secondary-link" type="submit">Выйти</button>
+        </form>
+      </div>
+    </div>
+
+    <form id="import-form" class="workspace-form" method="post" action="/api/imports" enctype="multipart/form-data" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="workspace-grid">
+        <section class="workspace-card workspace-card-archive">
+          <label class="field field-file">
+            <span class="field-label">Архив Telegram</span>
+            <span class="field-copy">Нужен ZIP с `result.json`, папками `photos`, `files`, `video_files` и остальными медиа.</span>
+            <input type="file" name="archive" accept=".zip,application/zip" required />
+          </label>
+        </section>
+
+        <section class="workspace-card workspace-card-target">
+          <fieldset class="field field-segment">
+            <legend class="field-label">Что создаём в Яндекс Мессенджере</legend>
+            <div class="segmented" role="radiogroup" aria-label="Тип цели">
+              <label class="segment-option">
+                <input type="radio" name="target_kind" value="chat" checked />
+                <span>Групповой чат</span>
+              </label>
+              <label class="segment-option">
+                <input type="radio" name="target_kind" value="channel" />
+                <span>Канал</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <label class="field">
+            <span id="target-label" class="field-label">Наименование нового чата</span>
+            <span id="target-copy" class="field-copy">Название будет использовано при создании нового чата или канала в Яндекс Мессенджере.</span>
+            <input id="target-input" type="text" name="target" placeholder="Например: Архив команды продаж Q1" maxlength="200" required />
+          </label>
+
+          <label class="field">
+            <span class="field-label">Кого добавить в чат</span>
+            <span class="field-copy">Необязательно. Укажите корпоративные email сотрудников через запятую, точку с запятой или с новой строки.</span>
+            <textarea
+              id="additional-members-input"
+              name="additional_members"
+              rows="3"
+              placeholder="Например: user1@example.com, user2@example.com"
+            ></textarea>
+          </label>
+        </section>
+      </div>
+
+      <div class="workspace-actions">
+        {% if can_run_import %}
+        <div class="workspace-submit-block">
+          <button id="submit-button" type="submit" class="primary-button workspace-submit">Создать чат и поставить импорт в очередь</button>
+          <div id="archive-upload-progress" class="archive-upload-progress hidden" aria-live="polite">
+            <div class="archive-upload-progress-head">
+              <p id="archive-upload-title" class="archive-upload-title">Загрузка архива</p>
+              <p id="archive-upload-copy" class="archive-upload-copy">0%</p>
+            </div>
+            <div class="progress-track progress-track-secondary">
+              <div id="archive-upload-bar" class="progress-bar progress-bar-secondary"></div>
+            </div>
+            <div id="archive-upload-actions" class="archive-upload-actions hidden">
+              <button id="resume-upload-button" type="button" class="secondary-link">Продолжить</button>
+              <button id="reset-upload-button" type="button" class="secondary-link">Сбросить загрузку</button>
+            </div>
+            <p class="field-copy">Не закрывайте и не перезагружайте вкладку до начала задачи.</p>
+          </div>
+        </div>
+        {% else %}
+        <div class="alert-card workspace-alert">
+          Импорт отключён для локального админа. Нужен вход через SSO, чтобы при создании нового чата назначить реального пользователя администратором.
+        </div>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+
+  <section class="panel panel-progress">
+    <div class="panel-head">
+      <div>
+        <p class="caption">Очередь</p>
+        <h2>История и прогресс</h2>
+      </div>
+    </div>
+
+    <div id="jobs-empty" class="empty-state {% if jobs|length > 0 %}hidden{% endif %}">
+      Заданий пока нет.
+    </div>
+
+    <div id="jobs-list" class="jobs-table">
+      {% for job in jobs %}
+      <details class="job-row" data-job-id="{{ job.id }}">
+        <summary class="job-row-summary">
+          <div class="job-row-primary">
+            <p class="caption">{{ "Новый канал" if job.target_kind == "channel" else "Новый чат" }}</p>
+            <h3>{{ job.archive_name }}</h3>
+            <p class="job-target">{{ job.target_value }}</p>
+          </div>
+          <div class="job-row-progress">
+            <p class="asset-progress-label">{{ job.progress_label }}</p>
+            <div class="progress-track">
+              <div class="progress-bar {% if job.state == 'running' %}is-running{% endif %}" style="width: {{ job.progress }}%"></div>
+            </div>
+          </div>
+          <div class="job-row-metrics">
+            <span>{{ job.progress }}%</span>
+            <span>{{ job.progress_current }} / {{ job.progress_total }}</span>
+            <span>Ошибки: {{ job.error_count }}</span>
+          </div>
+          <div class="job-row-state">
+            <span class="badge {{ 'badge-running' if job.state == 'running' else 'badge-completed' if job.state == 'completed' else 'badge-failed' if job.state == 'failed' else 'badge-soft' }}">
+              {{ job.state }}
+            </span>
+          </div>
+        </summary>
+
+        <div class="job-row-details">
+          <div class="job-row-meta">
+            <p class="status-detail">{{ job.detail }}</p>
+            {% if job.resolved_chat_id %}
+            <p class="status-meta">chat_id: {{ job.resolved_chat_id }}</p>
+            {% endif %}
+            <p class="status-current">{{ job.current_item or "Ожидание следующего сообщения" }}</p>
+          </div>
+
+          <div class="job-row-events">
+            <div class="job-row-events-block">
+              <p class="caption">Действия</p>
+              <ul class="log-list compact">
+                {% for entry in job.events if entry.level != "error" %}
+                <li>{{ entry.message }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="job-row-events-block">
+              <p class="caption">Ошибки</p>
+              <ul class="log-list compact">
+                {% for entry in job.events if entry.level == "error" %}
+                <li>{{ entry.message }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+
+<script nonce="{{ csp_nonce }}">
+  window.__INITIAL_JOBS__ = {{ jobs | tojson }};
+  window.__ACTIVE_UPLOAD_SESSION__ = {{ active_upload_session | tojson }};
+</script>
+<script src="/static/dashboard.js?v=20260330-2" defer></script>
+{% endblock %}

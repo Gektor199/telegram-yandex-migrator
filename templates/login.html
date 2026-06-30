@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="shell shell-login">
+  <section class="hero login-hero-single">
+    <p class="eyebrow">Migrator</p>
+    <div class="login-center">
+      <div class="panel-head panel-head-login">
+        <div class="panel-head-title panel-head-title-centered panel-head-login-title">
+          <h2>Авторизация</h2>
+        </div>
+      </div>
+
+      {% if sso_ready %}
+      <div class="login-primary-stack">
+        <a class="primary-link primary-link-wide" href="/login/sso">SSO</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <form
+      id="admin-login-form"
+      method="post"
+      action="/login/local"
+      class="form-grid {% if sso_ready %}hidden{% endif %}"
+    >
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <label class="field">
+        <span class="field-label">Логин админа</span>
+        <span class="field-copy">Резервный доступ для настройки сервиса и SSO.</span>
+        <input type="text" name="login" placeholder="{{ local_admin_login }}" required />
+      </label>
+      <label class="field">
+        <span class="field-label">Пароль</span>
+        <input type="password" name="password" placeholder="••••••••••••" required />
+      </label>
+      <button type="submit" class="primary-button">Войти как админ</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

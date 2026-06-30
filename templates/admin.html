@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="shell shell-admin">
+  <section class="panel panel-admin-wide">
+    <div class="panel-head">
+      <div>
+        <p class="caption">Migrator</p>
+        <h2>Управление сервисом</h2>
+        <p class="panel-subtitle">Токен бота, SSO, лимиты и последние задания.</p>
+      </div>
+      <div class="top-actions">
+        <a class="secondary-link" href="/admin/export/completed-chats.csv">Выгрузить статистику CSV</a>
+        <a class="secondary-link" href="/dashboard">К заданиям</a>
+        <form class="inline-form" method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="secondary-link" type="submit">Выйти</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="notes-grid">
+      <article class="note-card">
+        <h3>Всего загрузок</h3>
+        <p class="note-value">{{ total_uploads_count }}</p>
+        <p>Общее количество загруженных архивов и запусков импорта.</p>
+      </article>
+      <article class="note-card">
+        <h3>Успешно перенесено</h3>
+        <p class="note-value">{{ successful_chats_count }}</p>
+        <p>Количество завершённых переносов чатов и каналов.</p>
+      </article>
+      <article class="note-card">
+        <h3>SSO включен</h3>
+        <p>{{ "Да" if access_settings.enabled else "Нет" }}</p>
+      </article>
+      <article class="note-card">
+        <h3>Callback URL</h3>
+        <p>{{ access_settings.callback_url }}</p>
+      </article>
+      <article class="note-card">
+        <h3>Login URL</h3>
+        <p>{{ access_settings.login_url }}</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="caption">Runtime settings</p>
+        <h2>Настройки worker и Яндекса</h2>
+      </div>
+    </div>
+
+    <form method="post" action="/admin/settings" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <label class="field">
+        <span class="field-label">OAuth-токен бота Яндекс</span>
+        <span class="field-copy">{{ settings_rows["yandex_bot_token"]["description"] }} Оставьте поле пустым, чтобы не менять текущий токен.</span>
+        <input type="password" name="yandex_bot_token" value="" autocomplete="new-password" placeholder="Текущий токен скрыт" />
+      </label>
+      <label class="field">
+        <span class="field-label">Yandex API Base</span>
+        <span class="field-copy">{{ settings_rows["yandex_api_base"]["description"] }}</span>
+        <input type="text" name="yandex_api_base" value="{{ settings_rows['yandex_api_base']['value'] }}" required />
+      </label>
+      <label class="field">
+        <span class="field-label">Параллельные задачи</span>
+        <span class="field-copy">{{ settings_rows["max_parallel_jobs"]["description"] }}</span>
+        <input type="number" min="1" max="10" name="max_parallel_jobs" value="{{ settings_rows['max_parallel_jobs']['value'] }}" required />
+      </label>
+      <label class="field">
+        <span class="field-label">Параллельные задачи на пользователя</span>
+        <span class="field-copy">{{ settings_rows["max_parallel_jobs_per_user"]["description"] }}</span>
+        <input
+          type="number"
+          min="1"
+          max="10"
+          name="max_parallel_jobs_per_user"
+          value="{{ settings_rows['max_parallel_jobs_per_user']['value'] }}"
+          required
+        />
+      </label>
+      <button type="submit" class="primary-button">Сохранить настройки</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="caption">Access</p>
+        <h2>Keycloak SSO и локальный админ</h2>
+      </div>
+    </div>
+
+    <form method="post" action="/admin/access-settings" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <fieldset class="field field-segment">
+        <span class="field-label">SSO режим</span>
+        <span class="field-copy">Можно держать локальный admin-вход как резервный, даже если Keycloak уже включен.</span>
+        <div class="segmented">
+          <label class="segment-option">
+            <input type="radio" name="sso_enabled" value="true" {% if access_settings.sso_enabled %}checked{% endif %} />
+            <span>SSO включен</span>
+          </label>
+          <label class="segment-option">
+            <input type="radio" name="sso_enabled" value="false" {% if not access_settings.sso_enabled %}checked{% endif %} />
+            <span>SSO выключен</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <label class="field">
+        <span class="field-label">Public Base URL</span>
+        <span class="field-copy">Используется для callback URL, login URL и logout URL.</span>
+        <input type="text" name="public_base_url" value="{{ access_settings.public_base_url }}" required />
+      </label>
+      <label class="field">
+        <span class="field-label">Keycloak Metadata URL</span>
+        <span class="field-copy">OIDC discovery endpoint, например `.../.well-known/openid-configuration`.</span>
+        <input type="text" name="oidc_server_metadata_url" value="{{ access_settings.metadata_url }}" />
+      </label>
+      <label class="field">
+        <span class="field-label">Client ID</span>
+        <span class="field-copy">Идентификатор OIDC-клиента в Keycloak.</span>
+        <input type="text" name="oidc_client_id" value="{{ access_settings.client_id }}" />
+      </label>
+      <label class="field">
+        <span class="field-label">Client Secret</span>
+        <span class="field-copy">Секрет клиента. Сейчас: {{ access_settings.client_secret_masked }}.</span>
+        <input type="password" name="oidc_client_secret" value="" autocomplete="new-password" placeholder="Оставьте пустым, чтобы не менять" />
+      </label>
+      <label class="field">
+        <span class="field-label">Scope</span>
+        <span class="field-copy">Обычно достаточно `openid profile email`.</span>
+        <input type="text" name="oidc_scope" value="{{ access_settings.scope }}" />
+      </label>
+      <label class="field">
+        <span class="field-label">Admin emails</span>
+        <span class="field-copy">Список через запятую. Эти пользователи получают права администратора после SSO-входа.</span>
+        <input type="text" name="admin_emails" value="{{ access_settings.admin_emails }}" />
+      </label>
+      <label class="field">
+        <span class="field-label">Admin domains</span>
+        <span class="field-copy">Домены через запятую, которым доверяете для admin-доступа.</span>
+        <input type="text" name="admin_domains" value="{{ access_settings.admin_domains }}" />
+      </label>
+      <label class="field">
+        <span class="field-label">Local admin login</span>
+        <span class="field-copy">Резервный доступ. Хранится в `.env`.</span>
+        <input type="text" name="local_admin_login" value="{{ access_settings.local_admin_login }}" required />
+      </label>
+      <label class="field">
+        <span class="field-label">Local admin password</span>
+        <span class="field-copy">Сейчас: {{ access_settings.local_admin_password_masked }}. Оставьте поле пустым, чтобы не менять пароль.</span>
+        <input type="password" name="local_admin_password" value="" autocomplete="new-password" placeholder="Оставьте пустым, чтобы не менять" />
+      </label>
+      <button type="submit" class="primary-button">Сохранить доступ и SSO</button>
+    </form>
+
+    <div class="kv-grid">
+      <div><strong>Logout URL</strong><span>{{ access_settings.logout_url }}</span></div>
+      <div><strong>Login URL</strong><span>{{ access_settings.login_url }}</span></div>
+      <div><strong>Callback URL</strong><span>{{ access_settings.callback_url }}</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="caption">Users</p>
+        <h2>Пользователи</h2>
+      </div>
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Имя</th>
+          <th>Админ</th>
+          <th>Последний вход</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in users %}
+        <tr>
+          <td>{{ item.email }}</td>
+          <td>{{ item.full_name }}</td>
+          <td>{{ "Да" if item.is_admin else "Нет" }}</td>
+          <td>{{ item.last_login_at or "-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="caption">Jobs</p>
+        <h2>Последние задания</h2>
+      </div>
+    </div>
+    <div class="jobs-table">
+      {% for job in jobs %}
+      <details class="job-row">
+        <summary class="job-row-summary">
+          <div class="job-row-primary">
+            <p class="caption">{{ "Новый канал" if job.target_kind == "channel" else "Новый чат" }}</p>
+            <h3>{{ job.archive_name }}</h3>
+            <p class="job-target">{{ job.target_value }}</p>
+          </div>
+          <div class="job-row-progress">
+            <div class="progress-track">
+              <div class="progress-bar {% if job.state == 'running' %}is-running{% endif %}" style="width: {{ job.progress }}%"></div>
+            </div>
+          </div>
+          <div class="job-row-metrics">
+            <span>{{ job.progress }}%</span>
+            <span>{{ job.processed_messages }} / {{ job.total_messages }}</span>
+            <span>Ошибки: {{ job.error_count }}</span>
+          </div>
+          <div class="job-row-state">
+            <span class="badge {{ 'badge-running' if job.state == 'running' else 'badge-completed' if job.state == 'completed' else 'badge-failed' if job.state == 'failed' else 'badge-soft' }}">
+              {{ job.state }}
+            </span>
+          </div>
+        </summary>
+
+        <div class="job-row-details">
+          <div class="job-row-meta">
+            <p class="status-detail">{{ job.detail }}</p>
+            {% if job.resolved_chat_id %}
+            <p class="status-meta">chat_id: {{ job.resolved_chat_id }}</p>
+            {% endif %}
+            <p class="status-current">{{ job.current_item or "Ожидание следующего сообщения" }}</p>
+          </div>
+
+          <div class="job-row-events">
+            <div class="job-row-events-block">
+              <p class="caption">Действия</p>
+              <ul class="log-list compact">
+                {% for entry in job.events if entry.level != "error" %}
+                <li>{{ entry.message }}</li>
+                {% else %}
+                <li class="log-list-empty">Действий пока нет.</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="job-row-events-block">
+              <p class="caption">Ошибки</p>
+              <ul class="log-list compact">
+                {% for entry in job.events if entry.level == "error" %}
+                <li>{{ entry.message }}</li>
+                {% else %}
+                <li class="log-list-empty">Ошибок нет.</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+{% endblock %}

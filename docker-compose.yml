@@ -1,0 +1,64 @@
+services:
+  web:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips="*"
+    ports:
+      - "${HTTP_PORT:-8081}:8080"
+    environment:
+      APP_NAME: ${APP_NAME:-Telegram -> Yandex Migrator}
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://migrator:migrator@db:5432/migrator}
+      APP_DATA_DIR: /app/data
+      APP_ENV_FILE: /app/runtime/.env
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:8081}
+      YANDEX_BOT_TOKEN: ${YANDEX_BOT_TOKEN:-}
+      SSO_ENABLED: ${SSO_ENABLED:-false}
+      OIDC_SERVER_METADATA_URL: ${OIDC_SERVER_METADATA_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-openid profile email}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@example.com}
+      ADMIN_DOMAINS: ${ADMIN_DOMAINS:-}
+      MAX_PARALLEL_JOBS: ${MAX_PARALLEL_JOBS:-2}
+    volumes:
+      - app_data:/app/data
+      - ./.env:/app/runtime/.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: python -m app.worker
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://migrator:migrator@db:5432/migrator}
+      APP_DATA_DIR: /app/data
+      APP_ENV_FILE: /app/runtime/.env
+      YANDEX_BOT_TOKEN: ${YANDEX_BOT_TOKEN:-}
+      MAX_PARALLEL_JOBS: ${MAX_PARALLEL_JOBS:-2}
+      WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-1}
+    volumes:
+      - app_data:/app/data
+      - ./.env:/app/runtime/.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-migrator}
+      POSTGRES_USER: ${POSTGRES_USER:-migrator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-migrator}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-migrator} -d ${POSTGRES_DB:-migrator}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  app_data:
+  postgres_data:

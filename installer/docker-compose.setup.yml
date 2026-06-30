@@ -1,0 +1,14 @@
+services:
+  setup-ui:
+    image: python:3.12-slim
+    command: python /workspace/installer/setup_ui/server.py
+    working_dir: /workspace
+    environment:
+      PYTHONPATH: /workspace
+      SETUP_ENV_FILE: /workspace/.env
+      SETUP_COMPLETE_FLAG: /workspace/.setup-complete
+      SETUP_PORT: "8787"
+    ports:
+      - "127.0.0.1:${INSTALLER_PORT:-8787}:8787"
+    volumes:
+      - ..:/workspace
